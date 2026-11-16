@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#8fd3ea">
+<title>Nussfänger – iss dich gesund!</title>
+<style>
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    position: fixed;
+    inset: 0;
+    overscroll-behavior: none;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    background: #8fd3ea;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  #game {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+  }
+
+  .hud {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: calc(14px + env(safe-area-inset-top)) 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    pointer-events: none;
+    font-size: 14px;
+  }
+
+  .health {
+    flex: 1;
+    max-width: 240px;
+    height: 16px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, 0.75);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+  }
+
+  .health > span {
+    display: block;
+    height: 100%;
+    width: 60%;
+    border-radius: 99px;
+    background: linear-gradient(90deg, #4ade80, #22c55e);
+    transition: width 0.12s linear;
+  }
+
+  .score {
+    font-weight: 700;
+    padding: 5px 11px;
+    border-radius: 99px;
+    color: #234;
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    white-space: nowrap;
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));
+    background: rgba(20, 40, 30, 0.35);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+
+  .overlay.show { display: flex; }
+
+  .card {
+    width: min(380px, 100%);
+    max-height: 100%;
+    overflow-y: auto;
+    padding: 24px 22px;
+    border-radius: 22px;
+    background: #fff;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
+    text-align: center;
+  }
+
+  .card h1 { margin: 0 0 10px; font-size: 25px; color: #1c3a2a; }
+  .card p { margin: 0 0 12px; line-height: 1.45; color: #4a5a52; font-size: 15px; }
+
+  .legend {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 0 0 14px;
+    text-align: left;
+  }
+
+  .legend div {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #4a5a52;
+  }
+
+  .dot {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 10px;
+    color: #fff;
+  }
+
+  .card .hint { font-size: 13px; color: #7b8b83; }
+
+  .card button {
+    margin-top: 6px;
+    width: 100%;
+    padding: 15px 18px;
+    border: 0;
+    border-radius: 14px;
+    background: #22c55e;
+    color: #fff;
+    font: inherit;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .card button:active { transform: translateY(1px); }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="hud">
+  <div class="health" role="img" aria-label="Gesundheit"><span id="healthBar"></span></div>
+  <div class="score" id="score">🌰 0</div>
+</div>
+
+<div class="overlay show" id="overlay">
+  <div class="card">
+    <h1 id="overlayTitle">Nussfänger</h1>
+    <p id="overlayText">Fange die Nüsse, die von oben fallen. Sie werden sofort gegessen und machen dich gesund.</p>
+    <div class="legend">
+      <div><span class="dot" style="background:#a9743f">🌰</span>Nuss: +7</div>
+      <div><span class="dot" style="background:#e0a92c">★</span>Goldnuss: +20</div>
+      <div><span class="dot" style="background:#3b82f6">🧲</span>Magnet</div>
+      <div><span class="dot" style="background:#8b5cf6">🐢</span>Zeitlupe</div>
+      <div><span class="dot" style="background:#22c55e">🛡</span>Schild</div>
+      <div><span class="dot" style="background:#f59e0b">×</span>Combo</div>
+    </div>
+    <p class="hint">Finger irgendwo aufsetzen und ziehen</p>
+    <button id="startBtn" type="button">Spiel starten</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const healthBar = document.getElementById('healthBar');
+  const scoreEl = document.getElementById('score');
+  const overlay = document.getElementById('overlay');
+  const overlayTitle = document.getElementById('overlayTitle');
+  const overlayText = document.getElementById('overlayText');
+  const startBtn = document.getElementById('startBtn');
+
+  const DRAIN = 3;             // Gesundheit pro Sekunde
+  const NUT_GAIN = 7;
+  const GOLD_GAIN = 20;
+  const MISS_PENALTY = 2;
+  const KEY_SPEED = 470;
+  const CHEW_TIME = 0.5;
+  const SLOW_FACTOR = 0.45;
+
+  const PU_MAX = { magnet: 7, slow: 5, shield: 6 };
+
+  const PU_DEFS = {
+    magnet: { glyph: '🧲', color: '#3b82f6', label: 'Magnet' },
+    slow:   { glyph: '🐢', color: '#8b5cf6', label: 'Zeitlupe' },
+    shield: { glyph: '🛡',  color: '#22c55e', label: 'Schild' }
+  };
+
+  let W = 0, H = 0, dpr = 1, groundH = 70;
+  let lastTime = 0;
+  let lastHudHealth = -1;
+  let lastScoreText = '';
+  let dragId = null;
+
+  const player = { x: 0, y: 0, w: 46, h: 62, targetX: null, chew: 0 };
+  const keys = { left: false, right: false };
+
+  const state = {
+    running: false,
+    health: 60,
+    score: 0,
+    combo: 0,
+    bestCombo: 0,
+    time: 0,
+    spawnTimer: 0.4,
+    items: [],
+    eating: [],
+    particles: [],
+    floaters: [],
+    flash: 0,
+    powerups: { magnet: 0, slow: 0, shield: 0 }
+  };
+
+  /* ---------- Setup ---------- */
+
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = rect.width || window.innerWidth;
+    H = rect.height || window.innerHeight;
+
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    groundH = Math.max(48, Math.min(80, H * 0.1));
+    player.w = Math.max(38, Math.min(58, W * 0.12));
+    player.h = player.w * 1.35;
+    player.y = H - groundH - player.h;
+
+    if (!player.x) player.x = W / 2;
+    player.x = clampX(player.x);
+  }
+
+  function clampX(x) {
+    return Math.max(player.w / 2, Math.min(W - player.w / 2, x));
+  }
+
+  function reset() {
+    state.health = 60;
+    state.score = 0;
+    state.combo = 0;
+    state.bestCombo = 0;
+    state.time = 0;
+    state.spawnTimer = 0.4;
+    state.items.length = 0;
+    state.eating.length = 0;
+    state.particles.length = 0;
+    state.floaters.length = 0;
+    state.flash = 0;
+    state.powerups.magnet = 0;
+    state.powerups.slow = 0;
+    state.powerups.shield = 0;
+    player.x = W / 2;
+    player.targetX = null;
+    player.chew = 0;
+    lastHudHealth = -1;
+    lastScoreText = '';
+    updateHud();
+  }
+
+  /* ---------- Spiellogik ---------- */
+
+  function mouthPos() {
+    const headR = player.h * 0.2;
+    const headCY = player.y + headR;
+    return { x: player.x, y: headCY + headR * 0.5 };
+  }
+
+  function multiplier() {
+    return Math.min(5, 1 + Math.floor(state.combo / 5));
+  }
+
+  function pickType() {
+    const roll = Math.random();
+    const goldChance = 0.05 + Math.min(0.04, state.time * 0.0005);
+    if (roll < goldChance) return 'gold';
+    const p = roll - goldChance;
+    if (p < 0.055) return 'magnet';
+    if (p < 0.11) return 'slow';
+    if (p < 0.155) return 'shield';
+    return 'nut';
+  }
+
+  function spawnItem() {
+    const r = 12 + Math.random() * 6;
+    state.items.push({
+      x: r + Math.random() * Math.max(1, W - r * 2),
+      y: -r - 10,
+      r: r,
+      vy: 150 + state.time * 14 + Math.random() * 45,
+      rot: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 3.2,
+      type: pickType(),
+      spin: Math.random() * Math.PI * 2
+    });
+  }
+
+  function burst(x, y, color, count, spread) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = (spread || 40) + Math.random() * 140;
+      state.particles.push({
+        x: x,
+        y: y,
+        vx: Math.cos(a) * s,
+        vy: Math.sin(a) * s - 60,
+        life: 0.65,
+        max: 0.65,
+        r: 2 + Math.random() * 3,
+        color: color
+      });
+    }
+  }
+
+  function addFloater(x, y, text, color, size) {
+    state.floaters.push({
+      x: x, y: y, text: text, color: color,
+      size: size || 15, life: 0.95, max: 0.95
+    });
+  }
+
+  function collect(n) {
+    state.combo += 1;
+    state.bestCombo = Math.max(state.bestCombo, state.combo);
+    const mult = multiplier();
+
+    if (n.type === 'gold') {
+      state.score += 5 * mult;
+      state.health = Math.min(100, state.health + GOLD_GAIN);
+      state.flash = 1;
+      player.chew = CHEW_TIME;
+      state.eating.push({ x: n.x, y: n.y, r: n.r, t: 0, rot: n.rot, type: 'gold' });
+      burst(n.x, n.y, '#ffe08a', 16, 60);
+      addFloater(n.x, n.y - 14, '+' + GOLD_GAIN, '#b7791f', 17);
+      if (mult > 1) addFloater(n.x, n.y - 34, '×' + mult, '#f59e0b', 14);
+      return;
+    }
+
+    if (n.type === 'nut') {
+      state.score += 1 * mult;
+      state.health = Math.min(100, state.health + NUT_GAIN);
+      state.flash = 1;
+      player.chew = CHEW_TIME;
+      state.eating.push({ x: n.x, y: n.y, r: n.r, t: 0, rot: n.rot, type: 'nut' });
+      burst(n.x, n.y, '#d9ac6d', 10, 40);
+      addFloater(n.x, n.y - 14, '+' + NUT_GAIN, '#1f9d55');
+      if (mult > 1) addFloater(n.x, n.y - 34, '×' + mult, '#f59e0b', 14);
+      return;
+    }
+
+    // Power-up
+    const def = PU_DEFS[n.type];
+    state.score += 2;
+    state.powerups[n.type] = PU_MAX[n.type];
+    burst(n.x, n.y, def.color, 18, 70);
+    addFloater(n.x, n.y - 16, def.label + '!', def.color, 16);
+  }
+
+  function update(dt) {
+    state.time += dt;
+    state.flash = Math.max(0, state.flash - dt * 3);
+    player.chew = Math.max(0, player.chew - dt);
+
+    // Power-up-Timer
+    for (const k in state.powerups) {
+      if (state.powerups[k] > 0) {
+        state.powerups[k] = Math.max(0, state.powerups[k] - dt);
+      }
+    }
+    const shielded = state.powerups.shield > 0;
+
+    if (!shielded) state.health -= DRAIN * dt;
+
+    // Bewegung
+    let dir = 0;
+    if (keys.left) dir -= 1;
+    if (keys.right) dir += 1;
+
+    if (dir !== 0) {
+      player.targetX = null;
+      player.x += dir * KEY_SPEED * dt;
+    } else if (player.targetX !== null) {
+      player.x += (player.targetX - player.x) * Math.min(1, 18 * dt);
+    }
+    player.x = clampX(player.x);
+
+    // Nüsse erzeugen
+    state.spawnTimer -= dt;
+    if (state.spawnTimer <= 0) {
+      spawnItem();
+      const interval = Math.max(0.34, 0.98 - state.time * 0.012);
+      state.spawnTimer = interval * (0.75 + Math.random() * 0.5);
+    }
+
+    // Fallende Objekte
+    const halfW = player.w * 0.5;
+    const catchTop = player.y - player.h * 0.2;
+    const catchBottom = player.y + player.h;
+    const floorY = H - groundH;
+    const slowOn = state.powerups.slow > 0;
+    const magnetOn = state.powerups.magnet > 0;
+
+    for (let i = state.items.length - 1; i >= 0; i--) {
+      const n = state.items[i];
+      n.y += n.vy * (slowOn ? SLOW_FACTOR : 1) * dt;
+      n.rot += n.rotSpeed * (slowOn ? SLOW_FACTOR : 1) * dt;
+      n.spin += dt * 2;
+
+      if (magnetOn) {
+        n.x += (player.x - n.x) * Math.min(1, 3.2 * dt);
+      }
+
+      const nearX = Math.max(player.x - halfW, Math.min(n.x, player.x + halfW));
+      const nearY = Math.max(catchTop, Math.min(n.y, catchBottom));
+      const dx = n.x - nearX;
+      const dy = n.y - nearY;
+
+      if (dx * dx + dy * dy < n.r * n.r) {
+        collect(n);
+        state.items.splice(i, 1);
+        continue;
+      }
+
+      if (n.y - n.r > floorY) {
+        if (shielded) {
+          burst(n.x, floorY, '#22c55e', 8, 30);
+          addFloater(n.x, floorY - 12, 'geschützt', '#16a34a', 13);
+        } else {
+          state.health -= MISS_PENALTY;
+          state.combo = 0;
+          burst(n.x, floorY, '#8a5f33', 7, 30);
+          addFloater(n.x, floorY - 10, '-' + MISS_PENALTY, '#dc2626');
+        }
+        state.items.splice(i, 1);
+      } else if (n.y > H + 140) {
+        state.items.splice(i, 1);
+      }
+    }
+
+    // Gegessenes wandert zum Mund
+    const m = mouthPos();
+    for (let i = state.eating.length - 1; i >= 0; i--) {
+      const e = state.eating[i];
+      e.t += dt / 0.2;
+      e.rot += dt * 8;
+
+      const p = Math.min(1, e.t);
+      const ease = p * p;
+      e.drawX = e.x + (m.x - e.x) * ease;
+      e.drawY = e.y + (m.y - e.y) * ease;
+      e.scale = 1 - 0.72 * p;
+
+      if (e.t >= 1) {
+        burst(m.x, m.y, e.type === 'gold' ? '#ffe08a' : '#d9ac6d', 9, 25);
+        addFloater(m.x + (Math.random() - 0.5) * 20, m.y - 18, 'mampf', '#8a5f33', 13);
+        state.eating.splice(i, 1);
+      }
+    }
+
+    // Partikel
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+      const p = state.particles[i];
+      p.vy += 420 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) state.particles.splice(i, 1);
+    }
+
+    // Texte
+    for (let i = state.floaters.length - 1; i >= 0; i--) {
+      const f = state.floaters[i];
+      f.y -= 42 * dt;
+      f.life -= dt;
+      if (f.life <= 0) state.floaters.splice(i, 1);
+    }
+
+    updateHud();
+
+    if (state.health <= 0) gameOver();
+  }
+
+  function updateHud() {
+    const h = Math.max(0, Math.round(state.health));
+    if (h !== lastHudHealth) {
+      lastHudHealth = h;
+      healthBar.style.width = h + '%';
+      healthBar.style.background = h > 55
+        ? 'linear-gradient(90deg, #4ade80, #22c55e)'
+        : h > 25
+          ? 'linear-gradient(90deg, #fbbf24, #f59e0b)'
+          : 'linear-gradient(90deg, #f87171, #ef4444)';
+    }
+    const mult = multiplier();
+    const text = '🌰 ' + state.score + (mult > 1 ? '  ×' + mult : '');
+    if (text !== lastScoreText) {
+      lastScoreText = text;
+      scoreEl.textContent = text;
+    }
+  }
+
+  /* ---------- Zeichnen ---------- */
+
+  function rrect(x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.lineTo(x + w - rr, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+    ctx.lineTo(x + w, y + h - rr);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    ctx.lineTo(x + rr, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+    ctx.lineTo(x, y + rr);
+    ctx.quadraticCurveTo(x, y, x + rr, y);
+    ctx.closePath();
+  }
+
+  function drawBackground() {
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#8fd3ea');
+    sky.addColorStop(0.65, '#c8ecd9');
+    sky.addColorStop(1, '#eaf7e6');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = 'rgba(255, 246, 186, 0.9)';
+    ctx.beginPath();
+    ctx.arc(W - 62, 96, 38, 0, Math.PI * 2);
+    ctx.fill();
+
+    const gy = H - groundH;
+    ctx.fillStyle = '#8ec27c';
+    ctx.fillRect(0, gy, W, groundH);
+
+    ctx.fillStyle = '#79b268';
+    const step = 26;
+    for (let x = -step; x < W + step; x += step) {
+      ctx.beginPath();
+      ctx.moveTo(x, gy);
+      ctx.lineTo(x + step * 0.3, gy - 11);
+      ctx.lineTo(x + step * 0.6, gy);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  function drawNutShape(r, outer, inner, crack) {
+    ctx.fillStyle = outer;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = inner;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.64, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = crack;
+    ctx.lineWidth = Math.max(1, r * 0.1);
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.55, -r * 0.25);
+    ctx.quadraticCurveTo(0, r * 0.45, r * 0.55, -r * 0.25);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.beginPath();
+    ctx.arc(-r * 0.3, -r * 0.35, r * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawGlyph(text, size) {
+    ctx.font = Math.round(size) + 'px system-ui, -apple-system, "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 0, size * 0.06);
+  }
+
+  function drawItem(n) {
+    ctx.save();
+    ctx.translate(n.x, n.y);
+
+    if (n.type === 'nut') {
+      ctx.rotate(n.rot);
+      drawNutShape(n.r, '#a9743f', '#d9ac6d', 'rgba(122, 79, 36, 0.55)');
+
+    } else if (n.type === 'gold') {
+      const pulse = 1 + Math.sin(n.spin * 3) * 0.06;
+      const glow = ctx.createRadialGradient(0, 0, n.r * 0.5, 0, 0, n.r * 2.4);
+      glow.addColorStop(0, 'rgba(255, 224, 138, 0.75)');
+      glow.addColorStop(1, 'rgba(255, 224, 138, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(0, 0, n.r * 2.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.rotate(n.rot * 0.6);
+      ctx.scale(pulse, pulse);
+      drawNutShape(n.r, '#e0a92c', '#ffe08a', 'rgba(150, 100, 20, 0.6)');
+      ctx.rotate(-n.rot * 0.6);
+      ctx.scale(1 / pulse, 1 / pulse);
+      ctx.fillStyle = '#fffbe6';
+      drawGlyph('★', n.r * 1.1);
+
+    } else {
+      const def = PU_DEFS[n.type];
+      const glow = ctx.createRadialGradient(0, 0, n.r * 0.5, 0, 0, n.r * 2.2);
+      glow.addColorStop(0, def.color + '88');
+      glow.addColorStop(1, def.color + '00');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(0, 0, n.r * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = def.color;
+      ctx.beginPath();
+      ctx.arc(0, 0, n.r, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, n.r * 0.82, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = '#fff';
+      drawGlyph(def.glyph, n.r * 1.25);
+    }
+
+    ctx.restore();
+  }
+
+  function drawEating() {
+    for (const e of state.eating) {
+      if (e.drawX === undefined) continue;
+      ctx.save();
+      ctx.translate(e.drawX, e.drawY);
+      ctx.rotate(e.rot);
+      ctx.globalAlpha = Math.max(0.2, 1 - e.t * 0.5);
+      if (e.type === 'gold') {
+        drawNutShape(e.r * e.scale, '#e0a92c', '#ffe08a', 'rgba(150, 100, 20, 0.6)');
+      } else {
+        drawNutShape(e.r * e.scale, '#a9743f', '#d9ac6d', 'rgba(122, 79, 36, 0.55)');
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawPowerups() {
+    const active = Object.keys(PU_MAX).filter((k) => state.powerups[k] > 0);
+    if (!active.length) return;
+
+    const h = 26;
+    const y = 104;
+    let x = W - 14;
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+
+    for (const k of active) {
+      const def = PU_DEFS[k];
+      const w = 88;
+      x -= w;
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      rrect(x, y, w, h, 13);
+      ctx.fill();
+
+      ctx.save();
+      rrect(x, y, w, h, 13);
+      ctx.clip();
+      const p = state.powerups[k] / PU_MAX[k];
+      ctx.fillStyle = def.color + '44';
+      ctx.fillRect(x, y, w * p, h);
+      ctx.restore();
+
+      ctx.font = '14px system-ui, -apple-system, sans-serif';
+      ctx.fillStyle = '#22303a';
+      ctx.fillText(def.glyph, x + 8, y + h / 2 + 1);
+      ctx.font = '700 12px system-ui, -apple-system, sans-serif';
+      ctx.fillStyle = def.color;
+      ctx.fillText(Math.ceil(state.powerups[k]) + 's', x + 32, y + h / 2 + 1);
+
+      x -= 8;
+    }
+  }
+
+  function drawPlayer() {
+    const p = player;
+    const cx = p.x;
+    const feet = p.y + p.h;
+    const headR = p.h * 0.2;
+    const headCY = p.y + headR;
+    const torsoTop = headCY + headR * 0.85;
+    const torsoBottom = feet - p.h * 0.26;
+    const tw = p.w * 0.62;
+
+    const t = performance.now() / 1000;
+    const moving = keys.left || keys.right || player.targetX !== null;
+    const walk = moving ? Math.sin(t * 14) * 4 : 0;
+    const health = Math.max(0, Math.min(100, state.health));
+
+    const chewProgress = p.chew > 0 ? 1 - p.chew / CHEW_TIME : 0;
+    const open = p.chew > 0 ? Math.abs(Math.sin(chewProgress * Math.PI * 5)) : 0;
+
+    // Schatten
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.13)';
+    ctx.beginPath();
+    ctx.ellipse(cx, feet + 5, p.w * 0.46, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Magnetfeld
+    if (state.powerups.magnet > 0) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(59, 130, 246, 0.55)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 8]);
+      ctx.lineDashOffset = -t * 40;
+      ctx.beginPath();
+      ctx.arc(cx, p.y + p.h * 0.5, p.w * 1.7, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Gesundheits-Glow
+    if (health > 70) {
+      const glow = ctx.createRadialGradient(cx, p.y + p.h * 0.4, 4, cx, p.y + p.h * 0.4, p.w * 1.5);
+      glow.addColorStop(0, 'rgba(140, 255, 170, ' + (0.28 * (health - 70) / 30) + ')');
+      glow.addColorStop(1, 'rgba(140, 255, 170, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(cx - p.w * 2, p.y - p.h * 0.5, p.w * 4, p.h * 2);
+    }
+
+    // Beine
+    ctx.strokeStyle = '#3c5a7a';
+    ctx.lineWidth = p.w * 0.17;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - tw * 0.22, torsoBottom - 4);
+    ctx.lineTo(cx - tw * 0.24 - walk, feet);
+    ctx.moveTo(cx + tw * 0.22, torsoBottom - 4);
+    ctx.lineTo(cx + tw * 0.24 + walk, feet);
+    ctx.stroke();
+
+    // Körper
+    ctx.fillStyle = health > 55 ? '#38bdf8' : health > 25 ? '#a3b8c9' : '#9aa6ae';
+    rrect(cx - tw / 2, torsoTop, tw, torsoBottom - torsoTop, tw * 0.3);
+    ctx.fill();
+
+    // Arme
+    const shoulderY = torsoTop + (torsoBottom - torsoTop) * 0.2;
+    const skin = health > 25 ? '#f3c49c' : '#dfc6b6';
+    ctx.strokeStyle = skin;
+    ctx.lineWidth = p.w * 0.15;
+    ctx.beginPath();
+    ctx.moveTo(cx - tw * 0.5, shoulderY);
+    ctx.lineTo(cx - tw * 0.9, shoulderY - p.h * 0.24);
+    ctx.moveTo(cx + tw * 0.5, shoulderY);
+    ctx.lineTo(cx + tw * 0.9, shoulderY - p.h * 0.24);
+    ctx.stroke();
+
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.arc(cx - tw * 0.9, shoulderY - p.h * 0.24, p.w * 0.09, 0, Math.PI * 2);
+    ctx.arc(cx + tw * 0.9, shoulderY - p.h * 0.24, p.w * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Kopf
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.arc(cx, headCY, headR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Haare
+    ctx.fillStyle = '#5b3a24';
+    ctx.beginPath();
+    ctx.arc(cx, headCY - headR * 0.15, headR, Math.PI * 1.08, Math.PI * 1.92);
+    ctx.fill();
+
+    // Wangen
+    const cheekAlpha = Math.max(health > 60 ? 0.35 : 0, open * 0.45);
+    if (cheekAlpha > 0.02) {
+      ctx.fillStyle = 'rgba(240, 130, 130, ' + cheekAlpha + ')';
+      const cheekR = headR * (0.2 + open * 0.12);
+      ctx.beginPath();
+      ctx.arc(cx - headR * 0.6, headCY + headR * 0.24, cheekR, 0, Math.PI * 2);
+      ctx.arc(cx + headR * 0.6, headCY + headR * 0.24, cheekR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Augen
+    const eyeY = headCY - headR * 0.08;
+    if (open > 0.35) {
+      ctx.strokeStyle = '#22303a';
+      ctx.lineWidth = Math.max(1.5, headR * 0.12);
+      ctx.beginPath();
+      ctx.arc(cx - headR * 0.35, eyeY, headR * 0.16, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.arc(cx + headR * 0.35, eyeY, headR * 0.16, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = '#22303a';
+      ctx.beginPath();
+      ctx.arc(cx - headR * 0.35, eyeY, headR * 0.12, 0, Math.PI * 2);
+      ctx.arc(cx + headR * 0.35, eyeY, headR * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Mund
+    const mouthY = headCY + headR * 0.45;
+    if (open > 0.06) {
+      const mrx = headR * 0.32;
+      const mry = headR * (0.08 + 0.3 * open);
+      ctx.fillStyle = '#7f2b2b';
+      ctx.beginPath();
+      ctx.ellipse(cx, mouthY, mrx, mry, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#fffaf2';
+      ctx.beginPath();
+      ctx.ellipse(cx, mouthY - mry * 0.55, mrx * 0.86, mry * 0.32, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#e2686e';
+      ctx.beginPath();
+      ctx.ellipse(cx, mouthY + mry * 0.45, mrx * 0.6, mry * 0.34, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = '#22303a';
+      ctx.lineWidth = Math.max(1.5, headR * 0.12);
+      const smile = (health / 100) * 0.9;
+      ctx.beginPath();
+      if (smile > 0.15) {
+        ctx.arc(cx, mouthY - headR * 0.2, headR * 0.42, 0.25 * Math.PI, (0.75 - smile * 0.2) * Math.PI + 0.1);
+      } else {
+        ctx.moveTo(cx - headR * 0.3, mouthY);
+        ctx.lineTo(cx + headR * 0.3, mouthY);
+      }
+      ctx.stroke();
+    }
+
+    // Fang-Blitz
+    if (state.flash > 0) {
+      const m = mouthPos();
+      ctx.fillStyle = 'rgba(255, 255, 255, ' + (state.flash * 0.35) + ')';
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, p.w * 0.9 * (1 - state.flash * 0.3), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Schildkugel
+    if (state.powerups.shield > 0) {
+      const pulse = 1 + Math.sin(t * 6) * 0.03;
+      const rw = p.w * 0.88 * pulse;
+      const rh = p.h * 0.74 * pulse;
+      ctx.fillStyle = 'rgba(34, 197, 94, 0.12)';
+      ctx.strokeStyle = 'rgba(34, 197, 94, 0.65)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(cx, p.y + p.h * 0.5, rw, rh, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
+  function drawParticles() {
+    for (const p of state.particles) {
+      ctx.globalAlpha = Math.max(0, p.life / p.max);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawFloaters() {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const f of state.floaters) {
+      ctx.globalAlpha = Math.max(0, Math.min(1, f.life / f.max));
+      ctx.font = '700 ' + f.size + 'px system-ui, -apple-system, sans-serif';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.fillText(f.text, f.x + 1, f.y + 1);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function draw() {
+    drawBackground();
+    for (const n of state.items) drawItem(n);
+    drawPlayer();
+    drawEating();
+    drawParticles();
+    drawFloaters();
+    drawPowerups();
+  }
+
+  /* ---------- Steuerung ---------- */
+
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', resize);
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+      keys.left = true;
+      e.preventDefault();
+    }
+    if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+      keys.right = true;
+      e.preventDefault();
+    }
+    if ((e.key === 'Enter' || e.key === ' ') && !state.running) startGame();
+  });
+
+  window.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
+    if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
+  });
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!state.running) return;
+    dragId = e.pointerId;
+    player.targetX = e.clientX;
+    e.preventDefault();
+  }, { passive: false });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!state.running) return;
+    if (e.pointerType === 'mouse' && dragId === null) {
+      player.targetX = e.clientX;
+      return;
+    }
+    if (e.pointerId === dragId) {
+      player.targetX = e.clientX;
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  window.addEventListener('pointerup', (e) => {
+    if (e.pointerId === dragId) dragId = null;
+  });
+
+  window.addEventListener('pointercancel', (e) => {
+    if (e.pointerId === dragId) dragId = null;
+  });
+
+  document.addEventListener('gesturestart', (e) => e.preventDefault());
+  document.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 1) e.preventDefault();
+  }, { passive: false });
+
+  /* ---------- Ablauf ---------- */
+
+  function startGame() {
+    reset();
+    state.running = true;
+    lastTime = 0;
+    overlay.classList.remove('show');
+  }
+
+  function gameOver() {
+    state.running = false;
+    state.health = 0;
+    dragId = null;
+    updateHud();
+    overlayTitle.textContent = 'Vorbei!';
+    overlayText.innerHTML = 'Du hast <strong>' + state.score + '</strong> Nüsse gegessen und ' +
+      'eine beste Combo von <strong>×' + state.bestCombo + '</strong> geschafft.';
+    startBtn.textContent = 'Nochmal spielen';
+    overlay.classList.add('show');
+  }
+
+  startBtn.addEventListener('click', startGame);
+
+  function frame(now) {
+    if (!lastTime) lastTime = now;
+    let dt = (now - lastTime) / 1000;
+    lastTime = now;
+    dt = Math.min(dt, 0.05);
+
+    if (state.running) update(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  updateHud();
+  draw();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
